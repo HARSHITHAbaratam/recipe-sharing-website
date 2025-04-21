@@ -1,2 +1,2 @@
-This is a streamlit project.
+This is a python project.
 This is done by Harshitha.

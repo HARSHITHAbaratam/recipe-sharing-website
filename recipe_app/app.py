@@ -54,17 +54,27 @@ def load_data():
         with open(RECIPE_DATA_FILE, 'r') as f:
             st.session_state.recipes = json.load(f)
     else:
-        # Sample recipes
+        # Sample recipes with enhanced ingredient structure
         st.session_state.recipes = {
             "Pasta Carbonara": {
-                "ingredients": ["Pasta", "Eggs", "Cheese", "Bacon"],
+                "ingredients": [
+                    {"name": "Pasta", "image": None},
+                    {"name": "Eggs", "image": None},
+                    {"name": "Cheese", "image": None},
+                    {"name": "Bacon", "image": None}
+                ],
                 "instructions": "1. Boil pasta\n2. Cook bacon\n3. Mix eggs and cheese\n4. Combine all ingredients",
                 "image": None,
                 "author": "system",
                 "date_added": str(datetime.datetime.now())
             },
             "Chicken Curry": {
-                "ingredients": ["Chicken", "Curry Paste", "Coconut Milk", "Rice"],
+                "ingredients": [
+                    {"name": "Chicken", "image": None},
+                    {"name": "Curry Paste", "image": None},
+                    {"name": "Coconut Milk", "image": None},
+                    {"name": "Rice", "image": None}
+                ],
                 "instructions": "1. Cook chicken\n2. Add curry paste\n3. Pour coconut milk\n4. Simmer and serve with rice",
                 "image": None,
                 "author": "system",
@@ -154,7 +164,8 @@ def search_recipe():
     if search_term or not search_term:  # Always show results
         results = []
         for name, details in st.session_state.recipes.items():
-            if not search_term or search_term.lower() in name.lower() or any(search_term.lower() in ingredient.lower() for ingredient in details["ingredients"]):
+            # Search in recipe name or ingredient names
+            if not search_term or search_term.lower() in name.lower() or any(search_term.lower() in ingredient["name"].lower() for ingredient in details["ingredients"]):
                 results.append((name, details))
         
         # Sort results based on selection
@@ -186,7 +197,12 @@ def search_recipe():
                     with st.expander("View Details"):
                         st.write("**Ingredients:**")
                         for ing in details["ingredients"]:
-                            st.write(f"• {ing}")
+                            st.write(f"• {ing['name']}")
+                            if ing["image"]:
+                                try:
+                                    st.image(base64.b64decode(ing["image"]), width=100)
+                                except:
+                                    st.info(f"Image for {ing['name']} could not be displayed")
                         
                         st.write("**Instructions:**")
                         st.write(details["instructions"])
@@ -217,7 +233,26 @@ def type_recipe():
     with col1:
         recipe_name = st.text_input("Recipe Name")
         
-        ingredients = st.text_area("Ingredients (one per line)")
+        # Dynamic ingredients input
+        st.subheader("Ingredients")
+        if "ingredients_list" not in st.session_state:
+            st.session_state.ingredients_list = [{"name": "", "image": None}]
+        
+        for i, ingredient in enumerate(st.session_state.ingredients_list):
+            cols = st.columns([3, 1])
+            with cols[0]:
+                st.session_state.ingredients_list[i]["name"] = st.text_input(f"Ingredient {i+1}", 
+                                                                          value=ingredient["name"], 
+                                                                          key=f"ing_name_{i}")
+            with cols[1]:
+                if st.button("Remove", key=f"remove_ing_{i}"):
+                    st.session_state.ingredients_list.pop(i)
+                    st.rerun()
+        
+        if st.button("Add Ingredient"):
+            st.session_state.ingredients_list.append({"name": "", "image": None})
+            st.rerun()
+        
         instructions = st.text_area("Instructions")
     
     with col2:
@@ -233,10 +268,12 @@ def type_recipe():
             image_data = base64.b64encode(buf.getvalue()).decode()
     
     if st.button("Save Recipe", use_container_width=True):
-        if recipe_name and ingredients:
-            ingredients_list = [ing.strip() for ing in ingredients.split("\n") if ing.strip()]
+        if recipe_name and any(ing["name"].strip() for ing in st.session_state.ingredients_list):
+            # Filter out empty ingredients
+            valid_ingredients = [ing for ing in st.session_state.ingredients_list if ing["name"].strip()]
+            
             st.session_state.recipes[recipe_name] = {
-                "ingredients": ingredients_list,
+                "ingredients": valid_ingredients,
                 "instructions": instructions,
                 "image": image_data,
                 "author": st.session_state.username,
@@ -244,43 +281,71 @@ def type_recipe():
             }
             save_recipe_data()
             st.success(f"Recipe '{recipe_name}' saved successfully!")
+            # Clear the ingredients list for next recipe
+            st.session_state.ingredients_list = [{"name": "", "image": None}]
             st.rerun()
         else:
-            st.error("Please provide at least a recipe name and ingredients")
+            st.error("Please provide at least a recipe name and one ingredient")
 
 # Function to take pictures of ingredients
 def take_ingredient_photo():
-    st.header("Take Pictures of Ingredients")
+    st.header("Add Ingredient Photos")
     
     recipe_options = list(st.session_state.recipes.keys())
+    
+    if not recipe_options:
+        st.info("No recipes available. Please create a recipe first.")
+        return
     
     col1, col2 = st.columns([3, 2])
     
     with col1:
         recipe_to_update = st.selectbox("Select Recipe", recipe_options)
-        ingredient_name = st.text_input("Ingredient Name")
+        
+        if recipe_to_update:
+            # Get ingredients for the selected recipe
+            ingredients = st.session_state.recipes[recipe_to_update]["ingredients"]
+            ingredient_names = [ing["name"] for ing in ingredients]
+            
+            if ingredient_names:
+                ingredient_to_update = st.selectbox("Select Ingredient", ingredient_names)
+                
+                if ingredient_to_update:
+                    st.write(f"Adding photo for **{ingredient_to_update}** in recipe **{recipe_to_update}**")
+            else:
+                st.info("This recipe doesn't have any ingredients. Please add ingredients first.")
+                return
     
     with col2:
         uploaded_image = st.file_uploader("Upload an ingredient image", type=["jpg", "jpeg", "png"])
         
-        if uploaded_image is not None:
+        if uploaded_image is not None and ingredient_to_update:
             image = Image.open(uploaded_image)
-            st.image(image, caption="Uploaded Ingredient", width=250)
+            st.image(image, caption=f"Image for {ingredient_to_update}", width=250)
             
             if st.button("Add Ingredient Photo"):
-                # In a real application, you would store this with the recipe
-                # For this demo, we'll just show success message
-                st.success(f"Photo added for {ingredient_name} in {recipe_to_update}!")
-                
-                # Display the ingredients with the new photo
-                if recipe_to_update in st.session_state.recipes:
-                    ingredients = st.session_state.recipes[recipe_to_update]["ingredients"]
-                    st.write(f"**Ingredients for {recipe_to_update}:**")
-                    for ing in ingredients:
-                        if ing.lower() == ingredient_name.lower():
-                            st.write(f"• {ing} (photo added)")
-                        else:
-                            st.write(f"• {ing}")
+                # Find the ingredient in the recipe and update its image
+                for i, ing in enumerate(st.session_state.recipes[recipe_to_update]["ingredients"]):
+                    if ing["name"] == ingredient_to_update:
+                        # Convert image to base64
+                        buf = io.BytesIO()
+                        image.save(buf, format="PNG")
+                        image_data = base64.b64encode(buf.getvalue()).decode()
+                        
+                        # Update the ingredient image
+                        st.session_state.recipes[recipe_to_update]["ingredients"][i]["image"] = image_data
+                        save_recipe_data()
+                        
+                        st.success(f"Photo added for {ingredient_to_update} in {recipe_to_update}!")
+                        
+                        # Display the updated ingredients
+                        st.write(f"**Updated Ingredients for {recipe_to_update}:**")
+                        for ing in st.session_state.recipes[recipe_to_update]["ingredients"]:
+                            st.write(f"• {ing['name']}")
+                            if ing["name"] == ingredient_to_update:
+                                st.image(image, width=100)
+                        
+                        break
 
 # Function to manage favorite recipes
 def manage_favorites():
@@ -309,7 +374,12 @@ def manage_favorites():
                     with st.expander("View Details"):
                         st.write("**Ingredients:**")
                         for ing in details["ingredients"]:
-                            st.write(f"• {ing}")
+                            st.write(f"• {ing['name']}")
+                            if ing["image"]:
+                                try:
+                                    st.image(base64.b64decode(ing["image"]), width=100)
+                                except:
+                                    st.info(f"Image for {ing['name']} could not be displayed")
                         
                         st.write("**Instructions:**")
                         st.write(details["instructions"])
@@ -340,9 +410,7 @@ def share_recipe():
             share_method = st.radio("Share via:", ["Email", "Link", "Social Media"])
             
             if st.button("Generate Sharing Link"):
-                 # Use the actual URL of your deployed app
-                base_url = "https://your-streamlit-app-url.streamlit.app/"
-                share_link = f"{base_url}?shared_recipe={recipe_to_share}"
+                share_link = f"https://recipe-hub.com/shared/{recipe_to_share.replace(' ', '-').lower()}"
                 st.success("Recipe Shared Successfully!")
                 st.code(share_link)
                 
@@ -362,7 +430,12 @@ def share_recipe():
                             st.info("Image could not be displayed")
                     st.write("**Ingredients:**")
                     for ing in details["ingredients"]:
-                        st.write(f"• {ing}")
+                        st.write(f"• {ing['name']}")
+                        if ing["image"]:
+                            try:
+                                st.image(base64.b64decode(ing["image"]), width=100)
+                            except:
+                                st.info(f"Image for {ing['name']} could not be displayed")
                     st.write("**Instructions:**")
                     st.write(details["instructions"])
         else:
@@ -385,8 +458,8 @@ def sync_favorites():
         device_name = st.text_input("Device Name (e.g., My Phone, My Laptop)")
         
         sync_options = st.multiselect("Sync Options", 
-                                      ["Favorites", "Your Created Recipes", "Images"],
-                                      default=["Favorites"])
+                                      ["Favorites", "Your Created Recipes", "Recipe Images", "Ingredient Images"],
+                                      default=["Favorites", "Ingredient Images"])
         
         if st.button("Sync Now"):
             with st.spinner("Syncing your recipes..."):
@@ -409,9 +482,17 @@ def sync_favorites():
                                       if details["author"] == st.session_state.username]
                     st.write(f"✓ {len(created_recipes)} created recipes")
                 
-                if "Images" in sync_options:
+                if "Recipe Images" in sync_options:
                     img_count = sum(1 for r in st.session_state.recipes.values() if r["image"] is not None)
                     st.write(f"✓ {img_count} recipe images")
+                
+                if "Ingredient Images" in sync_options:
+                    ing_img_count = 0
+                    for recipe in st.session_state.recipes.values():
+                        for ing in recipe["ingredients"]:
+                            if ing["image"] is not None:
+                                ing_img_count += 1
+                    st.write(f"✓ {ing_img_count} ingredient images")
     
     with col2:
         st.image("https://cdn-icons-png.flaticon.com/512/2682/2682067.png", width=220)
@@ -421,14 +502,7 @@ def sync_favorites():
 def main():
     # Load data first
     load_data()
-    # At the beginning of your main function after load_data()
-    query_params = st.query_params
-    if "shared_recipe" in query_params:
-        shared_recipe_name = query_params["shared_recipe"]
-        if shared_recipe_name in st.session_state.recipes:
-            st.info(f"Someone shared the recipe '{shared_recipe_name}' with you!")
-        # Display the shared recipe
-            display_recipe(shared_recipe_name)
+    
     st.title("🍲 Food Recipe Application")
     
     # Create a sidebar for navigation
@@ -448,7 +522,7 @@ def main():
         # Navigation options
         option = st.sidebar.radio(
             "Choose an option",
-            ["Search Recipe", "Type New Recipe", "Take Ingredient Photos", 
+            ["Search Recipe", "Type New Recipe", "Add Ingredient Photos", 
              "Manage Favorites", "Share Recipe", "Sync Favorites"]
         )
         
@@ -465,8 +539,17 @@ def main():
         if st.session_state.username in st.session_state.user_favorites:
             user_favorites = len(st.session_state.user_favorites[st.session_state.username])
         
+        # Count ingredient images
+        ingredient_images = 0
+        for recipe in st.session_state.recipes.values():
+            if recipe["author"] == st.session_state.username:
+                for ing in recipe["ingredients"]:
+                    if ing["image"] is not None:
+                        ingredient_images += 1
+        
         st.sidebar.write(f"📝 Created Recipes: {user_recipes}")
         st.sidebar.write(f"⭐ Favorite Recipes: {user_favorites}")
+        st.sidebar.write(f"🖼️ Ingredient Images: {ingredient_images}")
         st.sidebar.write(f"🔄 Last Sync: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}")
         
         # Display selected option
@@ -474,7 +557,7 @@ def main():
             search_recipe()
         elif option == "Type New Recipe":
             type_recipe()
-        elif option == "Take Ingredient Photos":
+        elif option == "Add Ingredient Photos":
             take_ingredient_photo()
         elif option == "Manage Favorites":
             manage_favorites()
