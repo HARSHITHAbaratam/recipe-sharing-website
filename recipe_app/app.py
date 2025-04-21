@@ -340,7 +340,9 @@ def share_recipe():
             share_method = st.radio("Share via:", ["Email", "Link", "Social Media"])
             
             if st.button("Generate Sharing Link"):
-                share_link = f"https://recipe-hub.com/shared/{recipe_to_share.replace(' ', '-').lower()}"
+                 # Use the actual URL of your deployed app
+                base_url = "https://your-streamlit-app-url.streamlit.app/"
+                share_link = f"{base_url}?shared_recipe={recipe_to_share}"
                 st.success("Recipe Shared Successfully!")
                 st.code(share_link)
                 
@@ -419,7 +421,14 @@ def sync_favorites():
 def main():
     # Load data first
     load_data()
-    
+    # At the beginning of your main function after load_data()
+    query_params = st.query_params
+    if "shared_recipe" in query_params:
+        shared_recipe_name = query_params["shared_recipe"]
+        if shared_recipe_name in st.session_state.recipes:
+            st.info(f"Someone shared the recipe '{shared_recipe_name}' with you!")
+        # Display the shared recipe
+            display_recipe(shared_recipe_name)
     st.title("🍲 Food Recipe Application")
     
     # Create a sidebar for navigation
